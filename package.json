@@ -1,0 +1,22 @@
+{
+  "name": "@h21-map/baidu-drawing-manager",
+  "scope":"@h21-map",
+  "version": "1.0.1",
+  "description": "A library of Baidu Map JS API",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/novakand/h21-map-baidu-drawing-manager"
+  },
+  "keywords": [
+    "baidu",
+    "baidu-map",
+    "drawing-manager",
+    "angular"
+  ],
+  "author": "",
+  "license": ""
+}
