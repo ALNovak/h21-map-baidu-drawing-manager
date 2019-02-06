@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview 百度地图的鼠标绘制工具，对外开放。
  * 允许用户在地图上点击完成鼠标绘制的功能。
@@ -20,9 +19,6 @@ var BMAP_DRAWING_MARKER    = "marker",     // 鼠标画点模式
 
 (function() {
 
-    /**
-     * 声明baidu包
-     */
     var baidu = baidu || {guid : "$BAIDU$"};
     (function() {
         window[baidu.guid] = {};
@@ -293,10 +289,6 @@ var BMAP_DRAWING_MARKER    = "marker",     // 鼠标画点模式
            }
         };
 
-        /**
-         * 停止事件冒泡传播
-         * @param {Event}
-         */
         baidu.stopBubble = baidu.event.stopBubble = function (event) {
             event = baidu.getEvent(event);
             event.stopPropagation ? event.stopPropagation() : event.cancelBubble = true;
@@ -505,8 +497,8 @@ var BMAP_DRAWING_MARKER    = "marker",     // 鼠标画点模式
         var me           = this,
             map          = this._map,
             mask         = this._mask,
-            points       = [],   //用户绘制的点
-            drawPoint    = null; //实际需要画在地图上的点
+            points       = [],   
+            drawPoint    = null;
             overlay      = null,
             isBinded     = false;
 
