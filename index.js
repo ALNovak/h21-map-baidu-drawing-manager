@@ -1,4 +1,3 @@
-
 /**
  * @fileoverview 百度地图的鼠标绘制工具，对外开放。
  * 允许用户在地图上点击完成鼠标绘制的功能。
@@ -129,8 +128,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
     MapsEventListener.MAP_EVENT = 2;
 
     var DRAWING_MODE_MARKER = "marker",
-        DRAWING_MODE_CIRCLE = "circle",
-        DRAWING_MODE_AREA = "area";
+        DRAWING_MODE_CIRCLE = "circle";
 
     function extend(subClass, superClass, className) {
         var key, proto,
@@ -394,50 +392,30 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
         baidu.object.extend(DrawingManager.prototype, {
 
             setDrawingMode: function (drawingType) {
+
                 let me = this;
-                if (this._drawingType != drawingType) {
-                    switch (drawingType) {
-                        case DRAWING_MODE_MARKER:
-                            me._bindMarker();
-                            break;
-                        case DRAWING_MODE_CIRCLE:
-                            me._bindCircle();
-                            break;
-                    }
+
+                this._drawingType = drawingType;
+
+                switch (drawingType) {
+                    case DRAWING_MODE_MARKER:
+                        me._bindMarker();
+                        break;
+                    case DRAWING_MODE_CIRCLE:
+                        me._bindCircle();
+                        break;
                 }
-
-            },
-
-            setPosition_: function (latitude, longitude) {
-                let me = this;
-                me.position = null;
-                me.position = new BMap.Point(longitude, latitude);
-            },
-
-            _setPosition: function (e) {
-                let me = this;
-                me.position = null;
-                me.position = e.point;
-            },
-
-            setEnableDraw: function (enabled) {
-                this._enableDraw = enabled;
-            },
-
-            setDefaultCursor: function (cursor) {
-                let me = this;
-                me.map.setDefaultCursor(cursor);
             },
 
             _bindMarker: function () {
+
                 var me = this;
 
                 if (me._centerMarker) {
                     me.map.removeOverlay(me._centerMarker);
-                    me._centerMarker = null;
                 }
 
-                position__ = null;
+                EventWrapper.clearListeners(me.map, 'click');
 
                 if (me.circle) {
                     me.map.removeOverlay(me.circle);
@@ -446,20 +424,39 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
                 var createCenterMarker = (e) => {
 
+                    if (me._centerMarker) {
+                        me.map.removeOverlay(me._centerMarker);
+                        me._centerMarker = null;
+                        me._dispatchEvent(me, "draw:marker_remove", null);
+                    }
+
                     if (e) {
                         me._setPosition(e);
                     }
 
-                    if (me._centerMarker != undefined && me._centerMarker != null) {
-                        me.map.removeOverlay(me._centerMarker);
-                        me._centerMarker = null;
+                    if (me.circle) {
+                        me.map.removeOverlay(me.circle);
+                        me.map.removeOverlay(me._vertexMarker);
                     }
 
-                    const icon = me.markerOptions.iconUrl ?
-                        new BMap.Icon(me.markerOptions.iconUrl, new BMap.Size(24, 28)) : null;
-                    me._centerMarker = new BMap.Marker(me.position, me.markerOptions);
-                    me.map.addOverlay(me._centerMarker);
-                    me._centerMarker.setIcon(icon);
+                    if (me.position) {
+                        const icon = me.markerOptions.iconUrl ?
+                            new BMap.Icon(me.markerOptions.iconUrl, new BMap.Size(24, 28)) : null;
+                        me._centerMarker = new BMap.Marker(me.position, me.markerOptions);
+                        me.map.addOverlay(me._centerMarker);
+                        me._centerMarker.setIcon(icon);
+
+                        me._centerMarker.setZIndex(9999);
+
+                        me.map.setCenter(me.position);
+                        if (me.map.getZoom() < 9) {
+                            me.map.setZoom(9);
+                        }
+
+                        me._dispatchEvent(me, "draw:marker_create", null);
+
+                        me.position = null;
+                    }
                 }
 
 
@@ -482,6 +479,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                 if (me.circle) {
                     me.map.removeOverlay(me.circle);
                     me.map.removeOverlay(me._vertexMarker);
+                    me._dispatchEvent(me, "draw:circle_remove", null);
                 }
 
                 let options = {
@@ -492,133 +490,85 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                 }
 
                 if (me._centerMarker) {
+
                     me.circle = new BMap.Circle(me._centerMarker.getPosition(), me.radius, options);
                     me.map.addOverlay(me.circle);
 
-                    me._centerMarker.addEventListener('dragging', function (event) {
-                        me.circle.setCenter(event.point);
-
-                        let to = me.destination(event.point, 90, me.radius);
-                        if (me._vertexMarker) {
-                            me._vertexMarker.setPosition(to);
-                        }
-
-                        let position = {
-                            latitude: event.point.lat,
-                            longitude: event.point.lng
-                        }
-                        let info = {
-                            radius: me.circle.getRadius(),
-                            position,
-                            latLng: event.point
-                        };
-                        me._dispatchEvent(me, "draw:circle_centre_change", info);
-                    });
-
-                    me._centerMarker.enableDragging();
-                    me._centerMarker.addEventListener('dragend', function (event) {
-                        let position = {
-                            latitude: event.point.lat,
-                            longitude: event.point.lng
-                        }
-                        let info = {
-                            radius: me.circle.getRadius(),
-                            position,
-                            latLng: event.point
-                        };
-
-                        me._dispatchEvent(me, "draw:circle_center_complete", info);
-
-                    });
-
-
-                    me._centerMarker.addEventListener('mouseout', function (event) {
-                        let position = {
-                            latitude: event.point.lat,
-                            longitude: event.point.lng
-                        }
-                        let info = {
-                            radius: me.circle.getRadius(),
-                            position,
-                            latLng: event.point
-                        };
-
-                        me._dispatchEvent(me, "draw:marker_mouseout", info);
-                    });
-
-
-                    me._centerMarker.addEventListener('mouseover', function (event) {
-                        let position = {
-                            latitude: event.point.lat,
-                            longitude: event.point.lng
-                        }
-                        let info = {
-                            radius: me.circle.getRadius(),
-                            position,
-                            latLng: event.point
-                        };
-
-                        me._dispatchEvent(me, "draw:marker_mouseover", info);
-
-                    });
-
-                    me._centerMarker.addEventListener('click', function (event) {
-                        let position = {
-                            latitude: event.point.lat,
-                            longitude: event.point.lng
-                        }
-                        let info = {
-                            radius: me.circle.getRadius(),
-                            position,
-                            latLng: event.point
-                        };
-
-                        me._dispatchEvent(me, "draw:marker_click", info);
-
-                    });
-
-                    this.map.setViewport(me.circle.getBounds());
+                    me._dispatchEvent(me, "draw:circle_create", this._getInfo());
 
                     me._createVertexMarker();
+
+                    me._centerMarker.enableDragging();
+
+                    me._centerMarkerAddEventListener();
+
+                    me.setCircleFitBounds();
+
                 }
 
             },
 
-            _createVertexMarker: function () {
+            setPosition: function (latitude, longitude) {
+                let me = this;
 
-                var me = this;
-                this.to = null;
-                this.to = me.destination(this._centerMarker.getPosition(), 90, this.radius);
+                me.position = null;
+                me.position = new BMap.Point(longitude, latitude);
+            },
 
-                if (me._vertexMarker) {
-                    me.map.removeOverlay(this._vertexMarker);
+            _setPosition: function (e) {
+                let me = this;
+
+                me.position = null;
+                me.position = e.point;
+            },
+
+            setEnableDraw: function (enabled) {
+                this._enableDraw = enabled;
+            },
+
+            setDefaultCursor: function (cursor) {
+                let me = this;
+                me.map.setDefaultCursor(cursor);
+            },
+
+            setAreaFitBounds: function (enabled) {
+
+            },
+
+            setMarkerFitBounds: function (enabled) {
+
+            },
+
+            setCircleFitBounds: function (enabled) {
+                let me = this;
+                me.map.setViewport(me.circle.getBounds());
+            },
+
+            _getInfo: function () {
+
+                let me = this;
+                let position = {
+                    latitude: me._centerMarker.getPosition().lat,
+                    longitude: me._centerMarker.getPosition().lng
                 }
+                let info = {
+                    radius: me.circle.getRadius(),
+                    position,
+                };
 
-                me._vertexMarker = new BMap.Marker(me.to, me.markerOptions);
+                return info;
+            },
 
-                me.map.addOverlay(me._vertexMarker);
+            _vertexMarkerAddEventListener: function () {
 
-                me._vertexMarker.enableDragging();
-
-                const svg = [
-                    '<?xml version="1.0"?>',
-                    '<svg width="15px" height="15px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">',
-                    '<circle stroke="#003dd9" fill="white" stroke-width="10" cx="50" cy="50" r="35"/>',
-                    '</svg>'
-                ].join('\n');
-
-                const iconU = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
-
-                const icon = 'me.markerOptions.iconUrl' ?
-                    new BMap.Icon(iconU, new BMap.Size(15, 15)) : null;
-
-                me._vertexMarker.setIcon(icon);
+                let me = this;
 
                 me._vertexMarker.addEventListener('dragging', function (event) {
 
                     let distance = me.getDistanceTo(me._centerMarker.getPosition(), event.point);
 
                     me.radius = distance;
+
                     if (me.circle) {
                         me.circle.setRadius(distance);
                     }
@@ -631,7 +581,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                         pixel,
                         radius: me.circle.getRadius(),
                     }
-                    me._dispatchEvent(me, "draw:circle_radius_change", 'ev');
+                    me._dispatchEvent(me, "draw:circle_radius_change", ev);
                 });
 
                 me._vertexMarker.addEventListener('dragging', function (event) {
@@ -662,7 +612,82 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                 });
             },
 
+            _centerMarkerAddEventListener: function () {
+
+                let me = this;
+
+                me._centerMarker.addEventListener('dragging', (event) => {
+                    me.circle.setCenter(event.point);
+
+                    let to = me.destination(event.point, 90, me.radius);
+                    if (me._vertexMarker) {
+                        me._vertexMarker.setPosition(to);
+                    }
+
+                    me._dispatchEvent(me, "draw:circle_centre_change", me._getInfo());
+                });
+
+                me._centerMarker.addEventListener('dragend', () => {
+
+                    me._dispatchEvent(me, "draw:circle_center_complete", me._getInfo());
+
+                });
+
+                me._centerMarker.addEventListener('mouseout', () => {
+
+                    me._dispatchEvent(me, "draw:marker_mouseout", me._getInfo());
+                });
+
+                me._centerMarker.addEventListener('mouseover', () => {
+
+                    me._dispatchEvent(me, "draw:marker_mouseover", me._getInfo());
+
+                });
+
+                me._centerMarker.addEventListener('click', () => {
+
+                    me._dispatchEvent(me, "draw:marker_click", me._getInfo(event));
+
+                });
+
+            },
+
+            _createVertexMarker: function () {
+
+                let me = this;
+                this.to = null;
+                this.to = me.destination(this._centerMarker.getPosition(), 90, this.radius);
+
+                if (me._vertexMarker) {
+                    me.map.removeOverlay(this._vertexMarker);
+                }
+
+                me._vertexMarker = new BMap.Marker(me.to, me.markerOptions);
+
+                me.map.addOverlay(me._vertexMarker);
+
+                me._vertexMarker.enableDragging();
+
+                const svg = [
+                    '<?xml version="1.0"?>',
+                    '<svg width="15px" height="15px" viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">',
+                    '<circle stroke="#003dd9" fill="white" stroke-width="10" cx="50" cy="50" r="35"/>',
+                    '</svg>'
+                ].join('\n');
+
+                const iconU = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+
+                const icon = 'me.markerOptions.iconUrl' ?
+                    new BMap.Icon(iconU, new BMap.Size(15, 15)) : null;
+
+                me._vertexMarker.setIcon(icon);
+
+                me._vertexMarkerAddEventListener();
+
+            },
+
             destination: function (latlng, heading, distance) {
+
                 heading = (heading + 360) % 360;
                 var rad = Math.PI / 180,
                     radInv = 180 / Math.PI,
@@ -685,10 +710,12 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
             ,
 
             degreeToRad: function (degree) {
+
                 return Math.PI * degree / 180;
             },
 
             _getRange: function (v, a, b) {
+
                 if (a != null) {
                     v = Math.max(v, a);
                 }
@@ -699,6 +726,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
             },
 
             _getLoop: function (v, a, b) {
+
                 while (v > b) {
                     v -= b - a
                 }
@@ -730,6 +758,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
             },
 
             _stopBubble: function (e) {
+
                 if (e && e.stopPropagation) {
                     e.stopPropagation();
                 } else {
@@ -738,6 +767,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
             },
 
             _dispatchEvent: function (instance, type, opts) {
+
                 type.indexOf("on") != 0 && (type = "on" + type);
                 var event = new baidu.lang.Event(type);
                 if (!!opts) {
