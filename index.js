@@ -114,6 +114,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
     };
 
     function MapsEventListener(instance, eventName, handler, eventType) {
+
         this._instance = instance;
         this._eventName = eventName;
         this._handler = handler;
@@ -129,6 +130,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
     var DRAWING_MODE_MARKER = "marker",
         DRAWING_MODE_CIRCLE = "circle";
+    DRAWING_MODE_AREA = "area";
 
     function extend(subClass, superClass, className) {
         var key, proto,
@@ -352,6 +354,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
     T.undope = true;
 
     var DrawingManager = function (map, opts) {
+
         try {
             BMap;
         } catch (e) {
@@ -367,15 +370,20 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
             this.__proto__ = drawingManager.__proto__;
         }
 
-        this.map = map;
-        this._opts = opts;
-        this._drawingType = opts.drawingMode;
-        this._enableDraw = opts.enableDraw || false;
-        this._fitBounds = opts._fitBounds || true;
-        this.markerOptions = opts.markerOptions || {};
-        this.circleOptions = opts.circleOptions || {};
-        this.areaOptions = opts.areaOptions || {};
-        this.radius = opts.circleOptions.radius;
+        let me = this;
+        me.map = map;
+        me._opts = opts;
+        me._drawingType = opts.drawingMode;
+        me._enableDraw = opts.enableDraw || false;
+        me._fitBounds = opts._fitBounds || true;
+        me.markerOptions = opts.markerOptions || {};
+        me.circleOptions = opts.circleOptions || {};
+        me.areaOptions = opts.areaOptions || {};
+        me.radius = opts.circleOptions.radius;
+
+        EventWrapper.addListener(me.map, 'zoomend', () => {
+            me._dispatchEvent(me, "draw:zoom_map", me._getZoom());
+        });
     }
 
 
@@ -404,6 +412,12 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                     case DRAWING_MODE_CIRCLE:
                         me._bindCircle();
                         break;
+                    case DRAWING_MODE_AREA:
+                        me._bindArea();
+                        break;
+                    default:
+                        me._redraw();
+                        break;
                 }
             },
 
@@ -411,33 +425,23 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
                 var me = this;
 
-                if (me._centerMarker) {
-                    me.map.removeOverlay(me._centerMarker);
-                }
+                me._removeCenterMarker();
+                me._removeCircle();
 
                 EventWrapper.clearListeners(me.map, 'click');
 
-                if (me.circle) {
-                    me.map.removeOverlay(me.circle);
-                    me.map.removeOverlay(me._vertexMarker);
-                }
-
                 var createCenterMarker = (e) => {
 
-                    if (me._centerMarker) {
-                        me.map.removeOverlay(me._centerMarker);
-                        me._centerMarker = null;
-                        me._dispatchEvent(me, "draw:marker_remove", null);
-                    }
+                    me._removeArea();
+                    me._removeCenterMarker();
+                    me._removeCircle();
 
                     if (e) {
+
                         me._setPosition(e);
                     }
 
-                    if (me.circle) {
-                        me.map.removeOverlay(me.circle);
-                        me.map.removeOverlay(me._vertexMarker);
-                    }
+                    me._removeCircle();
 
                     if (me.position) {
                         const icon = me.markerOptions.iconUrl ?
@@ -458,7 +462,6 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                         me.position = null;
                     }
                 }
-
 
                 if (!this._enableDraw) {
                     createCenterMarker();
@@ -508,6 +511,105 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
             },
 
+            _bindArea: function () {
+
+                var me = this;
+
+                me._removeArea();
+                me._removeCenterMarker();
+                me._removeCircle();
+
+                var createArea = () => {
+
+                    var patch = [];
+
+                    me._setDrawing(false);
+
+                    let options = {
+                        strokeColor: me.areaOptions.strokeColor,
+                        strokeOpacity: me.areaOptions.strokeOpacity,
+                        fillColor: me.areaOptions.fillColor,
+                        fillOpacity: me.areaOptions.fillOpacity,
+                        strokeWeight: me.areaOptions.strokeWeight,
+                    }
+
+                    me.area = new BMap.Polyline([], options);
+                    me.map.addOverlay(me.area);
+
+                    var move = EventWrapper.addListener(me.map, 'mousemove', (event) => {
+                        patch.push(event.point);
+                        me.area.setPath(patch);
+
+                    });
+
+
+                    EventWrapper.addListenerOnce(me.map, 'mouseup', () => {
+
+                        EventWrapper.removeListener(move);
+                        me.map.removeOverlay(me.area);
+
+                        me.area = new BMap.Polygon(patch, options);
+                        me.map.addOverlay(me.area);
+
+                        me._dispatchEvent(me, "draw:area_create", me._convertCoordinates(me.area.getPath()));
+
+                        me._setDrawing(true);
+
+                        me._fitBoundsArea(patch);
+
+                    });
+                }
+
+
+                EventWrapper.addListenerOnce(me.map, 'mousedown', () => {
+                    createArea();
+                });
+            },
+
+
+            _redraw: function () {
+
+                let me = this;
+
+                me._removeArea();
+                me._removeCenterMarker();
+                me._removeCircle();
+            },
+
+            _setDrawing: function (enabled) {
+
+                let me = this;
+
+                enabled ? me.map.enableDragging() : me.map.disableDragging();
+                enabled ? me.map.enableScrollWheelZoom() : me.map.disableScrollWheelZoom();
+                enabled ? me.map.enableDoubleClickZoom() : me.map.disableDoubleClickZoom();
+
+            },
+
+            _fitBoundsArea: function () {
+
+                let me = this;
+
+                me.map.setViewport(me.area.getBounds());
+
+            },
+
+            _convertCoordinates: function (coordinates) {
+
+                let positions = [];
+
+                for (var n = 0; n < coordinates.length; n++) {
+                    let item = coordinates[n];
+                    let position = {
+                        latitude: item.lat,
+                        longitude: item.lng,
+                    }
+                    positions.push(position);
+                }
+                return positions;
+
+            },
+
             setPosition: function (latitude, longitude) {
                 let me = this;
 
@@ -539,6 +641,44 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
             },
 
+
+            _removeCircle: function () {
+
+                let me = this;
+
+                if (me.circle) {
+                    me.map.removeOverlay(me.circle);
+                    me.map.removeOverlay(me._vertexMarker);
+                    me.circle = null;
+                    me._vertexMarker = null;
+                    me._dispatchEvent(me, "draw:circle_remove", null);
+                }
+            },
+
+            _removeCenterMarker: function () {
+
+                let me = this;
+
+                if (me._centerMarker) {
+                    me.map.removeOverlay(me._centerMarker);
+                    me._centerMarker = null;
+                    me._dispatchEvent(me, "draw:marker_remove", null);
+                }
+
+            },
+
+            _removeArea: function () {
+
+                let me = this;
+
+                if (me.area) {
+                    me.map.removeOverlay(me.area);
+                    me.area = null;
+                    me._dispatchEvent(me, "draw:area_remove", null);
+                }
+
+            },
+
             setCircleFitBounds: function (enabled) {
                 let me = this;
                 me.map.setViewport(me.circle.getBounds());
@@ -559,6 +699,16 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
                 return info;
             },
 
+            _getZoom: function () {
+
+                let me = this;
+
+                let zoom = {
+                    zoom: me.map.getZoom()
+                }
+                return zoom;
+            },
+
             _vertexMarkerAddEventListener: function () {
 
                 let me = this;
@@ -575,7 +725,7 @@ window['BMapLib']['EventWrapper'] = window['BMapLib']['EventWrapper'] || {};
 
                     let pixel = {
                         clientX: event.pixel.x,
-                        clientY: event.pixel.y,
+                        clientY: event.pixel.y + 10,
                     }
                     let ev = {
                         pixel,
